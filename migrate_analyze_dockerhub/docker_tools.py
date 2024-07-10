@@ -9,7 +9,9 @@ import logging.handlers
 import time
 import subprocess
 
-
+#################################
+# Skopeo can copy image。
+#################################
 args = None
 parse = None
 logger = None

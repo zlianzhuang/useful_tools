@@ -20,6 +20,30 @@ arm64 = "arm64"
 process_download = "download"
 process_pull = "pull"
 process_push = "push"
+real_dest_user = ""
+real_dest_addr = "docker.io"
+real_namespace = ""
+real_namespace_repo = ""
+real_namespace_tag = ""
+
+########################### download data #######################
+#
+# root@i-jbljiiti:/tmp/lzz_down# ls
+# all_repositories  kube-webhook-certgen:v1.1.1--amd64  kube-webhook-certgen:v1.1.1--arm64
+# root@i-jbljiiti:/tmp/lzz_down# cat all_repositories 
+# kube-webhook-certgen v1.1.1 True
+#
+#process kube-webhook-certgen v1.1.1 True
+#docker tag liangjw/kube-webhook-certgen:v1.1.1 hub.kubesphere.com.cn/aicp/transfer_delete_later:amd64
+#docker tag liangjw/kube-webhook-certgen:v1.1.1 hub.kubesphere.com.cn/aicp/transfer_delete_later:arm64
+#docker push hub.kubesphere.com.cn/aicp/transfer_delete_later:amd64
+#docker push hub.kubesphere.com.cn/aicp/transfer_delete_later:arm64
+#docker manifest create hub.kubesphere.com.cn/aicp/kube-webhook-certgen:v1.1.1 hub.kubesphere.com.cn/aicp/transfer_delete_later:amd64 hub.kubesphere.com.cn/aicp/transfer_delete_later:arm64
+#docker manifest push hub.kubesphere.com.cn/aicp/kube-webhook-certgen:v1.1.1
+#docker manifest rm hub.kubesphere.com.cn/aicp/kube-webhook-certgen:v1.1.1
+#docker rmi hub.kubesphere.com.cn/aicp/transfer_delete_later:amd64
+#docker rmi hub.kubesphere.com.cn/aicp/transfer_delete_later:arm64
+#################################################################
 
 def get_repository_file():
     return f"{args.data}/all_repositories"
@@ -55,6 +79,11 @@ def init_logger(level: int = logging.DEBUG):
 def parse_args():
     global args
     global parser
+    global real_dest_user
+    global real_dest_addr
+    global real_namespace
+    global real_namespace_repo
+    global real_namespace_tag
 
     parser = argparse.ArgumentParser(description="")
     #group = parser.add_mutually_exclusive_group()
@@ -71,15 +100,28 @@ def parse_args():
                        help="download image")
     parser.add_argument("--namespace",
                        default="radondb",
-                        help="docker hub namespace, default: radondb")
+                        help="docker hub namespace, eg: radondb, radondb/lzzhang, radondb/lzzhang:v1")
     parser.add_argument("--dest-user",
-                       help="dest docker hub user")
+                        help="dest docker hub user, eg: aicp, aicp@hub.kubesphere.com.cn")
     parser.add_argument("--dest-password",
                        help="dest docker hub password")
     parser.add_argument("--dest-namespace",
                        default="zlianzhuang",
                         help="docker hub namespace, default: zlianzhuang")
     args = parser.parse_args()
+
+    real_dest_user = str(args.dest_user).split('@')[0]
+    if len(str(args.dest_user).split('@')) == 2:
+        real_dest_addr = str(args.dest_user).split('@')[1]
+
+    if len(str(args.namespace).split(':')) == 2:
+        real_namespace_tag = str(args.namespace).split(':')[1]
+    tmp_namespace = str(args.namespace).split(':')[0]
+    if len(tmp_namespace.split('/')) == 1:
+        real_namespace = tmp_namespace.split('/')[0]
+    if len(tmp_namespace.split('/')) == 2:
+        real_namespace = tmp_namespace.split('/')[0]
+        real_namespace_repo = tmp_namespace.split('/')[1]
 
 
 def process_image(process_type = process_download):
@@ -95,8 +137,8 @@ def process_image(process_type = process_download):
             #if repository_name == "radondb-postgres-exporter" or repository_name == "busybox":
             if True:
                 if multi_arch == "False":
-                    image_full_name = f"{args.namespace}/{repository_name}:{tag_name}"
-                    image_full_name_dest = f"{args.dest_namespace}/{repository_name}:{tag_name}"
+                    image_full_name = f"{real_namespace}/{repository_name}:{tag_name}"
+                    image_full_name_dest = f"{real_dest_addr}/{args.dest_namespace}/{repository_name}:{tag_name}"
                     image_short_name = f"{repository_name}:{tag_name}"
                     pull_cmd = f"docker pull {image_full_name}"
                     save_cmd = f"docker save {image_full_name} -o {args.data}/{image_short_name}"
@@ -120,10 +162,10 @@ def process_image(process_type = process_download):
                         run_command(rmi_cmd)
                         run_command(rmi_cmd_dest)
                 else:
-                    image_full_name = f"{args.namespace}/{repository_name}:{tag_name}"
-                    image_full_name_dest = f"{args.dest_namespace}/{repository_name}:{tag_name}"
-                    image_full_name_dest_transfer_amd64 = f"{args.dest_namespace}/transfer_delete_later:{amd64}"
-                    image_full_name_dest_transfer_arm64 = f"{args.dest_namespace}/transfer_delete_later:{arm64}"
+                    image_full_name = f"{real_namespace}/{repository_name}:{tag_name}"
+                    image_full_name_dest = f"{real_dest_addr}/{args.dest_namespace}/{repository_name}:{tag_name}"
+                    image_full_name_dest_transfer_amd64 = f"{real_dest_addr}/{args.dest_namespace}/transfer_delete_later:{amd64}"
+                    image_full_name_dest_transfer_arm64 = f"{real_dest_addr}/{args.dest_namespace}/transfer_delete_later:{arm64}"
                     image_short_name = f"{repository_name}:{tag_name}"
 
                     pull_amd64 = f"docker pull {image_full_name}"
@@ -190,7 +232,7 @@ def run_command(cmd, wait_success = True):
 def gernerate_repository_file():
     total_full_image_size = 0
     total_tag_image_size = 0
-    response = requests.get(url=f"https://hub.docker.com/v2/repositories/{args.namespace}?page=1&page_size=1000&ordering=last_updated")
+    response = requests.get(url=f"https://hub.docker.com/v2/repositories/{real_namespace}?page=1&page_size=1000&ordering=last_updated")
     rj = json.loads(response.text)
     all_repositories = rj["results"]
     if os.path.exists(get_repository_file()) == True:
@@ -199,13 +241,19 @@ def gernerate_repository_file():
     with open(get_repository_file(), "w+") as f:
         for repository in all_repositories:
             repository_name = repository["name"]
+            if len(real_namespace_repo) > 0 and repository_name != real_namespace_repo:
+                logger.info(f"we need repo {real_namespace_repo}, wkip {repository_name} ")
+                continue
             logger.info(f"get {repository_name} tags")
-            response_tags = requests.get(url=f"https://hub.docker.com/v2/repositories/{args.namespace}/{repository_name}/tags?page=1&page_size=1000&ordering=last_updated")
+            response_tags = requests.get(url=f"https://hub.docker.com/v2/repositories/{real_namespace}/{repository_name}/tags?page=1&page_size=1000&ordering=last_updated")
             logger.info(f"get {repository_name} tags over")
             rtj = json.loads(response_tags.text)
             all_tags = rtj["results"]
             for tag in all_tags:
                 tag_name = tag["name"]
+                if len(real_namespace_tag) > 0 and tag_name != real_namespace_tag:
+                    logger.info(f"we need tag {real_namespace_tag}, wkip {tag_name} ")
+                    continue
                 total_full_image_size += tag["full_size"]
                 tag_arch = []
                 for arch in tag["images"]:
@@ -232,7 +280,7 @@ def dry_pull_image():
     process_image(process_type = process_pull)
 
 def push_image():
-    run_command(f"docker login -u {args.dest_user} -p {args.dest_password}")
+    run_command(f"docker login -u {real_dest_user} -p {args.dest_password} {real_dest_addr}")
     process_image(process_type = process_push)
 
 def image_size():
@@ -257,4 +305,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
